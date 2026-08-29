@@ -2,12 +2,32 @@
 
 ## Project Overview
 
-Open Executive is a multi-agent AI system acting as a virtual corporate executive. Python backend (FastAPI) + Next.js 15 frontend. The "Executive" is a single coherent persona backed by 8 specialist sub-agents, all powered by the Anthropic Claude API.
+Open Executive is a multi-agent AI system acting as a virtual corporate executive. Python backend (FastAPI) + Next.js 15 frontend. The "Executive" is a single coherent persona backed by 8 specialist sub-agents, all powered by the Anthropic Claude API. Beyond chat Q&A, the system runs a proactive layer on top of the same orchestrator: a department/people/talent model with authority gates, a scheduler + alerting pipeline, multi-step workflows, chat-platform integrations, and competitive/market monitoring — all reachable as tools the Executive itself can call (see `orchestrator/executive.py`), not separate apps.
 
 ## Repository Layout
 
 ```
-packages/core/          Python: all agent logic, API, CLI
+packages/core/openexecutive/
+  orchestrator/          Executive loop (executive.py) + one *_tools.py module per tool
+                          family (departments, people, talent, calendar, schedule, alerts,
+                          broadcast, forms, workflows, MCP gateway) + router.py (specialist
+                          registry) + committee.py (adversarial draft review)
+  agents/                8 specialist sub-agents + triage/research_council/quality_judge
+  departments/           Org model: authority levels, cadence, charters — gates proactive actions
+  people/, talent/       People registry + insights; recruiting pipeline (offers, reminders)
+  staff_onboarding/      Ramp-up orchestration for newly "hired" specialists/departments
+  workflows/             Multi-step async workflow library (board prep, comp refresh, etc.)
+  scheduler/             Background job runner — single-instance, claims work via UPDATE…RETURNING
+  alerts/, briefing/     Proactive alerts (dispatch/preferences) + digest narratives
+  monitoring/            Competitive/market intelligence ingestion + enrichment pipeline
+  memory/                Company profile, episodic memory, session store, optional Honcho client
+  knowledge/             ChromaDB store + RAG pipeline (built-in + company docs)
+  providers/             Multi-backend LLM routing (Anthropic direct / OpenRouter /
+                         OpenAI-compatible) — lets an agent's model be swapped per-call
+  integrations/          Slack, Discord, Telegram, Google Chat, email — run inside the API lifespan
+  mcp_server/            Exposes an MCP endpoint (/mcp) for external MCP clients
+  architecture/, guide/  Static, hand-authored docs pages (see Architecture Docs below)
+  audit/                 SQLite-backed audit log + redaction
 packages/ui/            Next.js 15 web UI
 knowledge/              Curated MBA knowledge base (git-tracked Markdown)
 evals/                  Eval scenarios + LLM-as-judge runner
@@ -46,6 +66,14 @@ source .venv/bin/activate
    - Returns analysis to the Executive
 5. Executive synthesizes all specialist input into one coherent response
 6. The internal agent architecture is NEVER exposed to the user
+
+`consult_specialist` is only one tool among many the Executive can call in the same turn — `executive.py` wires in a separate tool family per `orchestrator/*_tools.py` module (departments, people, talent, calendar, scheduling, alerts, broadcasts, forms, workflows, the MCP gateway). Adding a new *capability* (as opposed to a new specialist) usually means adding a tool + handler pair to one of those modules and registering it in `executive.py`, not touching `router.py`.
+
+For high-stakes responses, `orchestrator/committee.py` runs a single adversarial review pass after the Executive's draft: a quality judge plus two domain reviewers (picked from the specialists actually consulted, falling back to CSO/CFO) critique in parallel, then one revision is produced. This is a single pass, not an iterative loop.
+
+Proactive (non-chat) actions — scheduled jobs, cadence-driven department actions — are gated by `departments/authority.py`, which decides per-action whether it executes immediately, is proposed to an approver, or is escalated to the principal, based on the owning department's `authority_level`.
+
+Per-agent model backend (Anthropic direct vs. OpenRouter vs. an OpenAI-compatible endpoint) is resolved per call in `providers/registry.py` (`MODEL_SPECS` is the source of truth) — the Council UI lets an operator flip one agent's model without affecting the rest.
 
 ## Prompt Caching — Critical
 
