@@ -50,7 +50,7 @@ dev = [
 ]
 
 [project.scripts]
-openexecutive = "openexecutive.cli:cli"
+openexecutive = "openexecutive.cli.commands:cli"
 
 [build-system]
 requires = ["hatchling"]
